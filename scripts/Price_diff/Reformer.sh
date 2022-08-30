@@ -4,25 +4,24 @@ if [ ! -d "./logs" ]; then
     mkdir ./logs
 fi
 
-if [ ! -d "./logs/Autoformer" ]; then
-    mkdir ./logs/Autoformer
+if [ ! -d "./logs/Reformer" ]; then
+    mkdir ./logs/Reformer
 fi
 
-for pred_len in 96 192 336 720
-do
+
 python -u run.py \
   --is_training 1 \
   --root_path /hy-tmp/ \
-  --data_path btc_reg.csv \
-  --model_id LOB_96_$pred_len \
-  --model Autoformer \
-  --freq us \
+  --data_path crypto.csv \
+  --model_id LOB_100_100 \
+  --model Reformer \
+  --freq h \
   --data custom \
   --target mid_price \
   --features MS \
-  --seq_len 96 \
-  --label_len 48 \
-  --pred_len $pred_len \
+  --seq_len 100 \
+  --label_len 50 \
+  --pred_len 100 \
   --e_layers 2 \
   --d_layers 1 \
   --factor 3 \
@@ -31,5 +30,4 @@ python -u run.py \
   --c_out 1 \
   --des 'exp' \
   --itr 1 \
-  --batch_size 32 >logs/Autoformer/Autoformer'_LOB_'$pred_len.log
-done
+  --batch_size 256 >logs/Reformer/Reformer_diff'_LOB_'100.log

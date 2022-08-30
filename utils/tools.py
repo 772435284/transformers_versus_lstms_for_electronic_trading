@@ -1,7 +1,3 @@
-'''
-tools.py
-Sourced from: https://github.com/thuml/Autoformer/blob/main/utils/tools.py
-'''
 import numpy as np
 import torch
 import matplotlib.pyplot as plt

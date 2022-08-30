@@ -35,7 +35,7 @@ parser.add_argument('--freq', type=str, default='h',
 parser.add_argument('--checkpoints', type=str, default='./checkpoint/', help='location of model checkpoints')
 
 
-parser.add_argument('--individual', action='store_true', default=False, help=' a linear layer for each variate(channel) individually')
+parser.add_argument('--individual', action='store_true', default=False, help='a linear layer for each variate(channel) individually')
 
 # LSTM
 parser.add_argument('--hidden_size', type=int, default=64, help='LSTM layer hidden size')

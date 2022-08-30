@@ -1,7 +1,3 @@
-'''
-timefeatures.py
-Based on: https://github.com/thuml/Autoformer/blob/main/utils/timefeatures.py
-'''
 from typing import List
 
 import numpy as np

@@ -4,6 +4,7 @@
 # email=maziqing.mzq@alibaba-inc.com
 # sourced from: https://github.com/MAZiqing/FEDformer/blob/master/layers/FourierCorrelation.py
 
+
 import numpy as np
 import torch
 import torch.nn as nn

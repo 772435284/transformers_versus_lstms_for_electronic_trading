@@ -3,6 +3,7 @@
 # author=maziqing
 # email=maziqing.mzq@alibaba-inc.com
 # sourced from: https://github.com/MAZiqing/FEDformer/blob/master/layers/MultiWaveletCorrelation.py
+
 import torch
 import numpy as np
 import torch.nn as nn

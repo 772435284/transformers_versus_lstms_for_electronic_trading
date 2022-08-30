@@ -4,9 +4,9 @@ Based on: https://github.com/thuml/Autoformer/blob/main/exp/exp_main.py
 '''
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import Informer, Autoformer, Transformer, Reformer, LSTM, FEDformer
+from models import Informer, Autoformer, Transformer, Reformer, LSTM, FEDformer, CNN_LSTM
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
-from utils.metrics import metric, Rsquared
+from utils.metrics import metric
 
 import numpy as np
 import torch
@@ -37,6 +37,7 @@ class Exp_Main(Exp_Basic):
             'Reformer': Reformer,
             'LSTM': LSTM,
             'FEDformer': FEDformer,
+            'CNN_LSTM': CNN_LSTM
         }
         model = model_dict[self.args.model].Model(self.args).float()
 
@@ -59,6 +60,8 @@ class Exp_Main(Exp_Basic):
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
         self.model.eval()
+        preds = []
+        trues = []
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
@@ -85,13 +88,24 @@ class Exp_Main(Exp_Basic):
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-
+                
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
-
                 loss = criterion(pred, true)
-
+                pred = pred.numpy()
+                true = true.numpy()
+                preds.append(pred)
+                trues.append(true)
                 total_loss.append(loss)
+        preds = np.array(preds)
+        trues = np.array(trues)
+        
+        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        mae, mse, rmse, mape, mspe, rse, corr, r_squared = metric(preds, trues)
+        r_squared = list(r_squared)
+        corr = list(corr)
+        print('mse:{}, mae:{}, rse:{}, corr:{}, R2:{}'.format(mse, mae, rse, corr, r_squared))
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
@@ -179,6 +193,7 @@ class Exp_Main(Exp_Basic):
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
+            test_loss = self.vali(test_data, test_loader, criterion)
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss))
@@ -203,13 +218,9 @@ class Exp_Main(Exp_Basic):
         test_steps = len(test_loader)
         preds = []
         trues = []
-        diff_preds = []
-        diff_trues = []
         folder_path = './test_results/' + setting + '/'
-        npy_path = './test_results/' + setting + '/save_npy/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
-            os.makedirs(npy_path)
 
         self.model.eval()
         with torch.no_grad():
@@ -242,16 +253,6 @@ class Exp_Main(Exp_Basic):
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                
-                
-                
-                diff_outputs = outputs - batch_x[:,-1:,f_dim:]
-                diff_batch_y = batch_y - batch_x[:,-1:,f_dim:]
-                diff_outputs = diff_outputs.detach().cpu().numpy()
-                diff_batch_y = diff_batch_y.detach().cpu().numpy()
-                diff_preds.append(diff_outputs)
-                diff_trues.append(diff_batch_y)
-                
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
 
@@ -260,60 +261,25 @@ class Exp_Main(Exp_Basic):
 
                 preds.append(pred)
                 trues.append(true)
-                
                 if (i + 1) % 100 == 0:
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * (test_steps - i)
                     print('\titers: {}, \tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(i+1, speed, left_time))
                     iter_count = 0
                     time_now = time.time()
-                
-                
-                if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-
-                    np.save(npy_path+f'gt_{i}.npy',gt)
-                    np.save(npy_path+f'pd_{i}.npy',pd)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
-                 
 
         preds = np.array(preds)
         trues = np.array(trues)
-        diff_preds = np.array(diff_preds)
-        diff_trues = np.array(diff_trues)
-        
         print('test shape:', preds.shape, trues.shape)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        diff_preds = diff_preds.reshape(-1, diff_preds.shape[-2], diff_preds.shape[-1])
-        diff_trues = diff_trues.reshape(-1, diff_trues.shape[-2], diff_trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
-        print(diff_preds.shape)
-        print(diff_trues.shape)
-        # result save
-        folder_path = './results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
-        r_square = Rsquared(diff_preds,diff_trues)
-        r_square = np.array(r_square)
-        r_square = np.squeeze(r_square,0)
-        print("R2: ", r_square)
-        print("Mean R2:", np.mean(r_square))
+        
+
+        mae, mse, rmse, mape, mspe, rse, corr, r_squared = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
-        f = open("result.txt", 'a')
-        f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}'.format(mse, mae))
-        f.write('\n')
-        f.write('\n')
-        f.close()
-
-        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'true.npy', trues)
-        np.save(folder_path + 'r_square.npy', r_square)
+        print(r_squared)
+        np.save(folder_path+'r_squared.npy',r_squared)
 
         return

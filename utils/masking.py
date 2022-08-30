@@ -1,7 +1,3 @@
-'''
-masking.py
-Sourced from: https://github.com/thuml/Autoformer/blob/main/utils/masking.py and https://github.com/MAZiqing/FEDformer/blob/master/utils/masking.py
-'''
 import torch
 import numpy as np
 import math

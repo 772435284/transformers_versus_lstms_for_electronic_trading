@@ -1,4 +1,3 @@
-
 '''
 data_factory.py
 Based on: https://github.com/thuml/Autoformer/blob/main/data_provider/data_factory.py
