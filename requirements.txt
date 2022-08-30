@@ -1,0 +1,8 @@
+pandas == 1.2.4
+numpy == 1.20.1
+torch ==  1.10.1
+tqdm
+torchvision
+sklearn
+matplotlib
+reformer_pytorch
