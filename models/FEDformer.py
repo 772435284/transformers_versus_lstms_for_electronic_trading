@@ -1,6 +1,6 @@
 '''
 FEDformer.py
-Based on: https://github.com/MAZiqing/FEDformer/blob/master/models/FEDformer.py
+Sourced from: https://github.com/MAZiqing/FEDformer/blob/master/models/FEDformer.py
 '''
 import torch
 import torch.nn as nn
@@ -32,7 +32,7 @@ class Model(nn.Module):
         self.label_len = configs.label_len
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
-        self.num_classes = configs.num_classes
+
         # Decomp
         kernel_size = configs.moving_avg
         if isinstance(kernel_size, list):
@@ -139,31 +139,7 @@ class Model(nn.Module):
             norm_layer=my_Layernorm(configs.d_model),
             projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
         )
-        self.fc1 = nn.Linear(configs.dec_in * configs.pred_len, self.num_classes)
 
-    # def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
-    #             enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
-    #     # decomp init
-    #     mean = torch.mean(x_enc, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
-    #     # zeros = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]]).to(device)  # cuda()
-    #     # seasonal_init, trend_init = self.decomp(x_enc)
-    #     # decoder input
-    #     dec_in = torch.cat([x_enc[:, -self.label_len:, :], mean], dim=1)
-    #     dec_out = F.pad(x_enc[:, -self.label_len:, :], (0, 0, 0, self.pred_len))
-    #     # enc
-    #     enc_out = self.enc_embedding(x_enc, x_mark_enc)
-    #     enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
-    #     # dec
-    #     dec_out = self.dec_embedding(dec_out, x_mark_dec)
-    #     dec_out, _ = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask,
-    #                                              trend=dec_in)
-    #     # final
-    #     # dec_out = trend_part + seasonal_part
-
-    #     if self.output_attention:
-    #         return dec_out[:, -self.pred_len:, :], attns
-    #     else:
-    #         return dec_out[:, -self.pred_len:, :]  # [B, L, D]
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
             enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
@@ -183,19 +159,11 @@ class Model(nn.Module):
                                                  trend=trend_init)
         # final
         dec_out = trend_part + seasonal_part
-        
-        dec_out = dec_out[:,-self.pred_len:,:]
-        #print(dec_out.shape)
-        batch_size,_,dec_in = dec_out.shape
-        dec_out = dec_out.view(batch_size,self.pred_len*dec_in)
-        
-        #print(dec_out.shape)
-        dec_out = self.fc1(dec_out)
-        dec_out = torch.softmax(dec_out, dim=1)
+
         if self.output_attention:
-            return dec_out, attns
+            return dec_out[:, -self.pred_len:, :], attns
         else:
-            return dec_out  # [B, L, D]
+            return dec_out[:, -self.pred_len:, :]  # [B, L, D]
 
 if __name__ == '__main__':
     class Configs(object):

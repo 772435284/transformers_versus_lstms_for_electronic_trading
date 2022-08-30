@@ -1,6 +1,6 @@
 '''
 Reformer.py
-Based on: https://github.com/thuml/Autoformer/blob/main/models/Reformer.py
+Sourced from: https://github.com/thuml/Autoformer/blob/main/models/Reformer.py
 '''
 import torch
 import torch.nn as nn
@@ -25,7 +25,7 @@ class Model(nn.Module):
         self.pred_len = configs.pred_len
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
-        self.num_classes = configs.num_classes
+
         # Embedding
         self.enc_embedding = DataEmbedding(configs.enc_in, configs.d_model, configs.embed, configs.freq,
                                            configs.dropout)
@@ -44,7 +44,6 @@ class Model(nn.Module):
             norm_layer=torch.nn.LayerNorm(configs.d_model)
         )
         self.projection = nn.Linear(configs.d_model, configs.c_out, bias=True)
-        self.fc1 = nn.Linear(configs.c_out * configs.pred_len, self.num_classes)
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
@@ -55,18 +54,8 @@ class Model(nn.Module):
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
         enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
         enc_out = self.projection(enc_out)
-        
-        enc_out = enc_out[:,-self.pred_len:,:]
-        #print(dec_out.shape)
-        batch_size,_,enc_in = enc_out.shape
-        enc_out = enc_out.view(batch_size,self.pred_len*enc_in)
-        
-        #print(dec_out.shape)
-        enc_out = self.fc1(enc_out)
-        enc_out = torch.softmax(enc_out, dim=1)
 
         if self.output_attention:
-            return enc_out, attns
+            return enc_out[:, -self.pred_len:, :], attns
         else:
-            return enc_out  # [B, L, D]
-
+            return enc_out[:, -self.pred_len:, :]  # [B, L, D]

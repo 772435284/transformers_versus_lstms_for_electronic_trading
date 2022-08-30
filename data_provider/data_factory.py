@@ -1,3 +1,4 @@
+
 '''
 data_factory.py
 Based on: https://github.com/thuml/Autoformer/blob/main/data_provider/data_factory.py
@@ -16,22 +17,14 @@ def data_provider(args, flag, all_data):
 
     if flag == 'test':
         shuffle_flag = False
-        drop_last = False
+        drop_last = True
         batch_size = args.batch_size
         freq = args.freq
-        scale = True
-    elif flag == 'backtest':
-        shuffle_flag = False
-        drop_last = False
-        batch_size = 1
-        freq = args.freq
-        scale = False
     else:
         shuffle_flag = True
         drop_last = True
         batch_size = args.batch_size
         freq = args.freq
-        scale = True
 
     data_set = Data(
         all_data = all_data,
@@ -41,11 +34,8 @@ def data_provider(args, flag, all_data):
         size=[args.seq_len, args.label_len, args.pred_len],
         features=args.features,
         target=args.target,
-        scale = scale,
         timeenc=timeenc,
-        freq=freq,
-        label = args.horizon,
-        product = args.product
+        freq=freq
     )
     print(flag, len(data_set))
     data_loader = DataLoader(

@@ -23,12 +23,6 @@ parser.add_argument('--model_id', type=str, required=True, default='test', help=
 parser.add_argument('--model', type=str, required=True, default='Autoformer',
                     help='model name, options: [Autoformer, Informer, Transformer]')
 
-# For crypto classification
-parser.add_argument('--horizon', type=str, default='label_5', help='classification horizon')
-parser.add_argument('--product', type=str, default='btc', help='classification product')
-parser.add_argument('--label_method', type=int, default=2, help='labelling method')
-parser.add_argument('--num_classes', type=int, default=3, help='num of classes')
-
 # data loader
 parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
 parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
@@ -56,6 +50,9 @@ parser.add_argument('--base', type=str, default='legendre', help='mwt base')
 parser.add_argument('--cross_activation', type=str, default='tanh',
                     help='mwt cross atention activation function tanh or softmax')
 parser.add_argument('--embed_type', type=int, default=0, help='0: default 1: value embedding + temporal embedding + positional embedding 2: value embedding + temporal embedding 3: value embedding + positional embedding 4: value embedding')
+
+
+
 # forecasting task
 parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
 parser.add_argument('--label_len', type=int, default=48, help='start token length')
@@ -120,14 +117,14 @@ Exp = Exp_Main
 if args.is_training:
     for ii in range(args.itr):
         # setting record of experiments
-        setting = '{}_{}_{}_product_{}_method_{}_{}'.format(
+        setting = '{}_{}_{}_sl{}_ll{}_pl{}_{}'.format(
             args.model_id,
             args.model,
-            args.horizon,
-            args.product,
-            args.label_method,
+            args.data,
+            args.seq_len,
+            args.label_len,
+            args.pred_len,
             ii)
-
         exp = Exp(args)  # set experiments
         print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
         exp.train(setting)
@@ -142,12 +139,13 @@ if args.is_training:
         torch.cuda.empty_cache()
 else:
     ii = 0
-    setting = '{}_{}_{}_product_{}_method_{}_{}'.format(
+    setting = '{}_{}_{}_sl{}_ll{}_pl{}_{}'.format(
             args.model_id,
             args.model,
-            args.horizon,
-            args.product,
-            args.label_method,
+            args.data,
+            args.seq_len,
+            args.label_len,
+            args.pred_len,
             ii)
 
     exp = Exp(args)  # set experiments

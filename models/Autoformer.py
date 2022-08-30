@@ -1,6 +1,6 @@
 '''
 Autoformer.py
-Based on: https://github.com/thuml/Autoformer/blob/main/models/Autoformer.py
+Sourced from: https://github.com/thuml/Autoformer/blob/main/models/Autoformer.py
 '''
 import torch
 import torch.nn as nn
@@ -23,7 +23,7 @@ class Model(nn.Module):
         self.label_len = configs.label_len
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
-        self.num_classes = configs.num_classes
+
         # Decomp
         kernel_size = configs.moving_avg
         self.decomp = series_decomp(kernel_size)
@@ -77,7 +77,6 @@ class Model(nn.Module):
             norm_layer=my_Layernorm(configs.d_model),
             projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
         )
-        self.fc1 = nn.Linear(configs.dec_in * configs.pred_len, self.num_classes)
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
@@ -97,16 +96,8 @@ class Model(nn.Module):
                                                  trend=trend_init)
         # final
         dec_out = trend_part + seasonal_part
-        
-        dec_out = dec_out[:,-self.pred_len:,:]
-        #print(dec_out.shape)
-        batch_size,_,dec_in = dec_out.shape
-        dec_out = dec_out.view(batch_size,self.pred_len*dec_in)
-        
-        #print(dec_out.shape)
-        dec_out = self.fc1(dec_out)
-        dec_out = torch.softmax(dec_out, dim=1)
+
         if self.output_attention:
-            return dec_out, attns
+            return dec_out[:, -self.pred_len:, :], attns
         else:
-            return dec_out  # [B, L, D]
+            return dec_out[:, -self.pred_len:, :]  # [B, L, D]

@@ -30,7 +30,6 @@ class ProbMask():
     def mask(self):
         return self._mask
 
-
 class LocalMask():
     def __init__(self, B, L,S,device="cpu"):
         mask_shape = [B, 1, L, S]

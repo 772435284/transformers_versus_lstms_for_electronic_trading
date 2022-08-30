@@ -4,12 +4,10 @@ Based on: https://github.com/thuml/Autoformer/blob/main/exp/exp_main.py
 '''
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import Informer, Autoformer, Transformer, Reformer, LSTM, CNN_LSTM, MLP, FEDformer, DLSTM
+from models import Informer, Autoformer, Transformer, Reformer, LSTM, FEDformer
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
-from utils.metrics import metric
-from utils.backtestor import backtestor
-from sklearn.metrics import accuracy_score, classification_report
-from tqdm import tqdm
+from utils.metrics import metric, Rsquared
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -23,21 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-
 warnings.filterwarnings('ignore')
-
-eps = 1e-8
-def sharpe(returns, freq=365, rfr=0):
-    # The function that is used to caculate sharpe ratio
-    return (np.sqrt(freq) * np.mean(returns - rfr + eps)) / np.std(returns - rfr + eps)
-
-def max_drawdown(return_list):
-    # The function that is used to calculate the max drawndom
-    i = np.argmax((np.maximum.accumulate(return_list) - return_list) / np.maximum.accumulate(return_list))  # 结束位置
-    if i == 0:
-        return 0
-    j = np.argmax(return_list[:i]) 
-    return (return_list[j] - return_list[i]) / (return_list[j])
 
 
 class Exp_Main(Exp_Basic):
@@ -51,11 +35,8 @@ class Exp_Main(Exp_Basic):
             'Transformer': Transformer,
             'Informer': Informer,
             'Reformer': Reformer,
-            'FEDformer': FEDformer,
             'LSTM': LSTM,
-            'CNN_LSTM': CNN_LSTM,
-            'MLP': MLP,
-            'DLSTM': DLSTM
+            'FEDformer': FEDformer,
         }
         model = model_dict[self.args.model].Model(self.args).float()
 
@@ -72,19 +53,17 @@ class Exp_Main(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.MSELoss()
         return criterion
 
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
         self.model.eval()
-        all_targets = []
-        all_predictions = []
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark,label) in enumerate(vali_loader):
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float()
-                label = torch.tensor(label,dtype=torch.long).to(self.device)
+
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
@@ -103,21 +82,17 @@ class Exp_Main(Exp_Basic):
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
                     else:
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                f_dim = -1 if self.args.features == 'MS' else 0
+                outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
 
-                label = label.squeeze()
                 pred = outputs.detach().cpu()
-                true = label.detach().cpu()
-                _, predictions = torch.max(pred, 1)
-                all_targets.append(true.numpy())
-                all_predictions.append(predictions.numpy())
+                true = batch_y.detach().cpu()
+
                 loss = criterion(pred, true)
 
                 total_loss.append(loss)
         total_loss = np.average(total_loss)
-        all_targets = np.concatenate(all_targets)    
-        all_predictions = np.concatenate(all_predictions)
-        print('accuracy_score:', accuracy_score(all_targets, all_predictions))
-        print(classification_report(all_targets, all_predictions, digits=4))
         self.model.train()
         return total_loss
 
@@ -147,11 +122,11 @@ class Exp_Main(Exp_Basic):
 
             self.model.train()
             epoch_time = time.time()
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark,label) in enumerate(train_loader):
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
-                label = torch.tensor(label,dtype=torch.long).to(self.device)
+
                 batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
@@ -179,8 +154,10 @@ class Exp_Main(Exp_Basic):
                     else:
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y)
 
-                    label = label.squeeze()
-                    loss = criterion(outputs, label)
+                    f_dim = -1 if self.args.features == 'MS' else 0
+                    outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                    loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -224,105 +201,119 @@ class Exp_Main(Exp_Basic):
             self.model.load_state_dict(torch.load(os.path.join(self.args.checkpoints + setting, 'checkpoint.pth')))
         time_now = time.time()
         test_steps = len(test_loader)
-        all_targets = []
-        all_predictions = []
+        preds = []
+        trues = []
+        diff_preds = []
+        diff_trues = []
         folder_path = './test_results/' + setting + '/'
+        npy_path = './test_results/' + setting + '/save_npy/'
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+            os.makedirs(npy_path)
+
+        self.model.eval()
+        with torch.no_grad():
+            iter_count = 0
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+                iter_count += 1
+                batch_x = batch_x.float().to(self.device)
+                batch_y = batch_y.float().to(self.device)
+
+                batch_x_mark = batch_x_mark.float().to(self.device)
+                batch_y_mark = batch_y_mark.float().to(self.device)
+
+                # decoder input
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # encoder - decoder
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        if self.args.output_attention:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                        else:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    if self.args.output_attention:
+                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+
+                    else:
+                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                f_dim = -1 if self.args.features == 'MS' else 0
+                outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                
+                
+                
+                diff_outputs = outputs - batch_x[:,-1:,f_dim:]
+                diff_batch_y = batch_y - batch_x[:,-1:,f_dim:]
+                diff_outputs = diff_outputs.detach().cpu().numpy()
+                diff_batch_y = diff_batch_y.detach().cpu().numpy()
+                diff_preds.append(diff_outputs)
+                diff_trues.append(diff_batch_y)
+                
+                outputs = outputs.detach().cpu().numpy()
+                batch_y = batch_y.detach().cpu().numpy()
+
+                pred = outputs  
+                true = batch_y  
+
+                preds.append(pred)
+                trues.append(true)
+                
+                if (i + 1) % 100 == 0:
+                    speed = (time.time() - time_now) / iter_count
+                    left_time = speed * (test_steps - i)
+                    print('\titers: {}, \tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(i+1, speed, left_time))
+                    iter_count = 0
+                    time_now = time.time()
+                
+                
+                if i % 20 == 0:
+                    input = batch_x.detach().cpu().numpy()
+                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
+                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+
+                    np.save(npy_path+f'gt_{i}.npy',gt)
+                    np.save(npy_path+f'pd_{i}.npy',pd)
+                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                 
+
+        preds = np.array(preds)
+        trues = np.array(trues)
+        diff_preds = np.array(diff_preds)
+        diff_trues = np.array(diff_trues)
+        
+        print('test shape:', preds.shape, trues.shape)
+        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        diff_preds = diff_preds.reshape(-1, diff_preds.shape[-2], diff_preds.shape[-1])
+        diff_trues = diff_trues.reshape(-1, diff_trues.shape[-2], diff_trues.shape[-1])
+        print('test shape:', preds.shape, trues.shape)
+        print(diff_preds.shape)
+        print(diff_trues.shape)
+        # result save
+        folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        if os.path.exists(folder_path+'/result.csv'):
-            self.backtest(setting, folder_path)
-        else:
-            self.model.eval()
-            with torch.no_grad():
-                iter_count = 0
-                for i, (batch_x, batch_y, batch_x_mark, batch_y_mark,label) in enumerate(test_loader):
-                    iter_count += 1
-                    batch_x = batch_x.float().to(self.device)
-                    batch_y = batch_y.float().to(self.device)
-                    label = torch.tensor(label,dtype=torch.long).to(self.device)
-                    batch_x_mark = batch_x_mark.float().to(self.device)
-                    batch_y_mark = batch_y_mark.float().to(self.device)
+        mae, mse, rmse, mape, mspe = metric(preds, trues)
+        r_square = Rsquared(diff_preds,diff_trues)
+        r_square = np.array(r_square)
+        r_square = np.squeeze(r_square,0)
+        print("R2: ", r_square)
+        print("Mean R2:", np.mean(r_square))
+        print('mse:{}, mae:{}'.format(mse, mae))
+        f = open("result.txt", 'a')
+        f.write(setting + "  \n")
+        f.write('mse:{}, mae:{}'.format(mse, mae))
+        f.write('\n')
+        f.write('\n')
+        f.close()
 
-                    # decoder input
-                    dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                    dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                    # encoder - decoder
-                    if self.args.use_amp:
-                        with torch.cuda.amp.autocast():
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                    else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                    label = label.squeeze()
-                    outputs = outputs.detach().cpu()
-                    label = label.detach().cpu()
-                    
-                    pred = outputs  
-                    true = label  
-                    _, predictions = torch.max(pred, 1)
-                    all_targets.append(true.numpy())
-                    all_predictions.append(predictions.numpy())
-                    if (i + 1) % 100 == 0:
-                        speed = (time.time() - time_now) / iter_count
-                        left_time = speed * (test_steps - i)
-                        print('\titers: {}, \tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(i+1, speed, left_time))
-                        iter_count = 0
-                        time_now = time.time()
-
-            
-            all_targets = np.concatenate(all_targets)    
-            all_predictions = np.concatenate(all_predictions)
-            np.save(folder_path+'/targets.npy',all_targets)
-            np.save(folder_path+'/predictions.npy',all_predictions)
-            df_pred = pd.DataFrame(all_predictions)
-            df_pred.to_csv(folder_path+'/result.csv',index=False)
-            print('accuracy_score:', accuracy_score(all_targets, all_predictions))
-            print(classification_report(all_targets, all_predictions, digits=4))
-            self.backtest(setting, folder_path)
-        
+        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+        np.save(folder_path + 'pred.npy', preds)
+        np.save(folder_path + 'true.npy', trues)
+        np.save(folder_path + 'r_square.npy', r_square)
 
         return
-
-    def backtest(self, setting,folder_path):
-        
-        if self.args.product == 'eth':
-            test_data = self.all_data[len(self.all_data) - 2580162 - 100:len(self.all_data)]
-        else:
-            test_data = self.all_data[len(self.all_data) - 2590189 - 100:len(self.all_data)]
-        test_data = test_data[self.args.pred_len:-(self.args.pred_len-1)]
-        test_data.sort_values(by='date', inplace=True)
-        test_data.set_index(keys='date', inplace=True)
-        test_data.reset_index(inplace=True)
-        mid_price = test_data['mid_price']
-        mid_price = mid_price.values
-        test_pred = pd.read_csv(folder_path+'/result.csv')
-        test_pred = test_pred.to_numpy()
-        bt = backtestor(mid_price,test_pred)
-        bt.start_backtest()
-        cpr = np.array(bt.captial_his)
-        daily_culmulative_pnl= [bt.captial_his[860615]-1,bt.captial_his[860615+859559]-1,bt.captial_his[-1]-1]
-        daily_culmulative_pnl = np.array(daily_culmulative_pnl)
-        daily_pnl = []
-        daily_pnl.append((daily_culmulative_pnl[0] -1)/1)
-        for i in range(len(daily_culmulative_pnl)):
-            if i == len(daily_culmulative_pnl)-1:
-                break
-            daily_pnl.append((daily_culmulative_pnl[i+1] -daily_culmulative_pnl[i])/daily_culmulative_pnl[i])
-        daily_pnl = np.array(daily_pnl)
-        print(daily_pnl)
-        sr = sharpe(daily_pnl)
-        mdd = max_drawdown(cpr)
-        print("Sharpe ratio: ", sr)
-        print("max drawdown", mdd*100)
-        print("Total asset: ", cpr[-1])
-        print("culmulative return: ", cpr[-1]-1)
-        
-        np.save(folder_path+'/cpr.npy',cpr)

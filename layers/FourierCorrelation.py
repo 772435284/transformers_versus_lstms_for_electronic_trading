@@ -3,6 +3,7 @@
 # author=maziqing
 # email=maziqing.mzq@alibaba-inc.com
 # sourced from: https://github.com/MAZiqing/FEDformer/blob/master/layers/FourierCorrelation.py
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -132,7 +133,3 @@ class FourierCrossAttention(nn.Module):
         # Return to time domain
         out = torch.fft.irfft(out_ft / self.in_channels / self.out_channels, n=xq.size(-1))
         return (out, None)
-    
-
-
-
