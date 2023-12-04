@@ -1,10 +1,6 @@
 # Transformer versus LSTMs for electronic trading
 
-This repository is the implementation for the MSc In Computing Individual Project: Transformer versus LSTMs for electronic trading.
-
-This repository may be updated and maintained in the future.&#x20;
-
-For marking purposes of the project, please only refer to the commits before 2022.08.31 1 p.m. (UTC).&#x20;
+This repository is the implementation for the Project: Transformer versus LSTMs for electronic trading.
 
 ## Implementation details & References
 
